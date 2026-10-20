@@ -19,6 +19,19 @@ runtimeManifest:
     course-labs:
       license: Apache-2.0
       actions:
+        get-enriched-orders:
+          function: actions/labs/get-enriched-orders/index.js
+          web: 'yes'
+          runtime: nodejs:22
+          inputs:
+            LOG_LEVEL: debug
+          limits:
+            timeout: 30000
+            memorySize: 256
+          annotations:
+            require-adobe-auth: false
+            final: true
+
         order-event-consumer:
           function: actions/labs/order-event-consumer/index.js
           web: 'no'

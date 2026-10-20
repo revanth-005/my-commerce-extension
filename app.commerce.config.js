@@ -1,30 +1,19 @@
 const { defineConfig } = require("@adobe/aio-commerce-lib-app/config");
 
 module.exports = defineConfig({
+  adminUi: {
+    menu: {
+      description: "Displays enriched order data in Adobe Commerce Admin.",
+      id: "order_enrichment_admin",
+      label: "Order Enrichment",
+      pageTitle: "Enriched Orders Dashboard",
+    },
+  },
   metadata: {
     description:
-      "A custom Adobe Commerce application. Fill description for your app.",
-    displayName: "my-commerce-extension",
-    id: "my-commerce-extension",
-    version: "1.0.0",
-  },
-  eventing: {
-    commerce: [
-      {
-        events: [
-          {
-            description: "Use case description for the event.",
-            fields: [{ name: "*" }],
-            label: "Sample Event",
-            name: "plugin.sample_event",
-            runtimeActions: ["my-package/handle-sample-event"],
-          },
-        ],
-        provider: {
-          description: "A description for your Commerce Events provider.",
-          label: "Commerce Events Provider",
-        },
-      },
-    ],
+        "A custom Adobe Commerce application. Fill description for your app.",
+    displayName: "product-enrichment",
+    id: "product-enrichment",
+    version: "1.0.1",
   },
 });
