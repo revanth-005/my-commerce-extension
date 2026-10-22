@@ -11,6 +11,7 @@ import {
 } from "@react-spectrum/s2";
 
 import { callAction } from "#web/api.js";
+import { SectionHeader } from "#web/components/section-header.jsx";
 
 const cardStyle = {
   border: "1px solid #d5d5d5",
@@ -97,12 +98,15 @@ export function BadgeSettings() {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Product badge settings</h1>
-      <p>
-        Choose when the storefront shows the NEW, SALE and LOW STOCK badges.
-        {updatedAt ? ` Last saved ${new Date(updatedAt).toLocaleString()}.` : " Showing default settings."}
-      </p>
+    <div style={{ padding: "8px 0" }}>
+      <SectionHeader
+        title="Badge Settings"
+        description={`Choose when the storefront shows the NEW, SALE and LOW STOCK badges.${
+          updatedAt ? ` Last saved ${new Date(updatedAt).toLocaleString()}.` : " Showing default settings."
+        }`}
+        tag="Editable"
+        tagColor="#c35a00"
+      />
 
       <RuleCard
         title="NEW badge"
