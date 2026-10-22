@@ -1,48 +1,56 @@
 const { Core } = require('@adobe/aio-sdk');
+const { successResponse } = require('../../utils');
+const { logStructured } = require('../../logging');
+
+const ACTION = 'validate-product';
 
 async function main (params) {
-  const logger = Core.Logger('validate-product', {
+  const startTime = Date.now();
+  const correlationId = params['x-correlation-id'] || require('crypto').randomUUID();
+
+  const logger = Core.Logger(ACTION, {
     level: params.LOG_LEVEL || 'info',
   });
 
-  logger.info('Webhook received:', JSON.stringify(params));
+  const product = params.product || params.data?.product;
+
+  logStructured(logger, 'info', ACTION, 'Action invoked', {
+    correlationId,
+    sku: product?.sku,
+  });
 
   try {
-    const product = params.product || params.data?.product;
-
     if (!product) {
-      logger.warn('No product data in webhook payload');
-      return {
-        statusCode: 200,
-        body: { op: 'success' },
-      };
+      logStructured(logger, 'warn', ACTION, 'No product data in webhook payload', { correlationId });
+      return successResponse({ op: 'success' }, correlationId);
     }
 
     const name = product.name != null ? String(product.name) : '';
     if (name.toLowerCase().includes('invalid')) {
       const message =
         'Product validation failed: product name must not contain the word "invalid".';
-      logger.warn(message);
-      return {
-        statusCode: 200,
-        body: {
-          op: 'exception',
-          message,
-        },
-      };
+      logStructured(logger, 'warn', ACTION, message, {
+        correlationId,
+        sku: product.sku,
+        durationMs: Date.now() - startTime,
+      });
+      return successResponse({ op: 'exception', message }, correlationId);
     }
 
-    logger.info(`Product ${product.sku || 'unknown'} passed validation`);
-    return {
-      statusCode: 200,
-      body: { op: 'success' },
-    };
+    logStructured(logger, 'info', ACTION, 'Action completed: product passed validation', {
+      correlationId,
+      sku: product.sku,
+      durationMs: Date.now() - startTime,
+    });
+    return successResponse({ op: 'success' }, correlationId);
   } catch (error) {
-    logger.error('Webhook handler failed:', error.message);
-    return {
-      statusCode: 200,
-      body: { op: 'success' },
-    };
+    logStructured(logger, 'error', ACTION, 'Webhook handler failed', {
+      correlationId,
+      sku: product?.sku,
+      error: error.message,
+      durationMs: Date.now() - startTime,
+    });
+    return successResponse({ op: 'success' }, correlationId);
   }
 }
 

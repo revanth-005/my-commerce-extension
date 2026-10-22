@@ -1,5 +1,17 @@
 {
   "meshConfig": {
+    "responseConfig": {
+      "CORS": {
+        "origin": [
+          "http://localhost:3000",
+          "https://main--my-commerce-storefront--revanth-005.aem.page",
+          "https://main--my-commerce-storefront--revanth-005.aem.live",
+          "https://feature-capstone-block--my-commerce-storefront--revanth-005.aem.page"
+        ],
+        "methods": ["POST"],
+        "allowedHeaders": ["Content-Type"]
+      }
+    },
     "sources": [
       {
         "name": "Commerce",

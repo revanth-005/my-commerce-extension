@@ -6,6 +6,13 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-app-builder
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,13 +23,35 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Install AIO CLI
-        run: npm install -g @adobe/aio-cli
+      - name: Setup AIO CLI
+        uses: adobe/aio-cli-setup-action@1.3.0
+        with:
+          os: ubuntu-latest
+          version: 10.x.x
+
+      - name: Prepare scopes
+        id: scopes
+        env:
+          SCOPES_JSON: ${{ secrets.IMS_OAUTH_S2S_SCOPES }}
+        run: echo "csv=$(printf '%s' "$SCOPES_JSON" | tr -d '[]\" ')" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate (OAuth server-to-server)
+        uses: adobe/aio-apps-action@4.1.0
+        with:
+          os: ubuntu-latest
+          command: oauth_sts
+          CLIENTID: ${{ secrets.IMS_OAUTH_S2S_CLIENT_ID }}
+          CLIENTSECRET: ${{ secrets.IMS_OAUTH_S2S_CLIENT_SECRET }}
+          TECHNICALACCOUNTID: ${{ secrets.IMS_TECHNICAL_ACCOUNT_ID }}
+          TECHNICALACCOUNTEMAIL: ${{ secrets.IMS_TECHNICAL_ACCOUNT_EMAIL }}
+          IMSORGID: ${{ secrets.IMS_OAUTH_S2S_ORG_ID }}
+          SCOPES: ${{ steps.scopes.outputs.csv }}
 
       - name: Create .env for deployment
         env:
@@ -32,20 +61,54 @@ jobs:
           IMS_OAUTH_S2S_CLIENT_SECRET: ${{ secrets.IMS_OAUTH_S2S_CLIENT_SECRET }}
           IMS_OAUTH_S2S_ORG_ID: ${{ secrets.IMS_OAUTH_S2S_ORG_ID }}
           IMS_OAUTH_S2S_SCOPES: ${{ secrets.IMS_OAUTH_S2S_SCOPES }}
+          IMS_TECHNICAL_ACCOUNT_ID: ${{ secrets.IMS_TECHNICAL_ACCOUNT_ID }}
+          IMS_TECHNICAL_ACCOUNT_EMAIL: ${{ secrets.IMS_TECHNICAL_ACCOUNT_EMAIL }}
           COMMERCE_API_BASE_URL: ${{ secrets.COMMERCE_API_BASE_URL }}
           COMMERCE_STORE_CODE: ${{ secrets.COMMERCE_STORE_CODE }}
         run: |
-          echo "AIO_runtime_namespace=$AIO_RUNTIME_NAMESPACE" >> .env
-          echo "AIO_runtime_auth=$AIO_RUNTIME_AUTH" >> .env
-          echo "IMS_OAUTH_S2S_CLIENT_ID=$IMS_OAUTH_S2S_CLIENT_ID" >> .env
-          echo "IMS_OAUTH_S2S_CLIENT_SECRET=$IMS_OAUTH_S2S_CLIENT_SECRET" >> .env
-          echo "IMS_OAUTH_S2S_ORG_ID=$IMS_OAUTH_S2S_ORG_ID" >> .env
-          echo "IMS_OAUTH_S2S_SCOPES=$IMS_OAUTH_S2S_SCOPES" >> .env
-          echo "COMMERCE_API_BASE_URL=$COMMERCE_API_BASE_URL" >> .env
-          echo "COMMERCE_STORE_CODE=$COMMERCE_STORE_CODE" >> .env
+          {
+            echo "AIO_runtime_namespace=$AIO_RUNTIME_NAMESPACE"
+            echo "AIO_runtime_auth=$AIO_RUNTIME_AUTH"
+            echo "IMS_OAUTH_S2S_CLIENT_ID=$IMS_OAUTH_S2S_CLIENT_ID"
+            echo "IMS_OAUTH_S2S_CLIENT_SECRET=$IMS_OAUTH_S2S_CLIENT_SECRET"
+            echo "IMS_OAUTH_S2S_ORG_ID=$IMS_OAUTH_S2S_ORG_ID"
+            echo "IMS_OAUTH_S2S_SCOPES=$IMS_OAUTH_S2S_SCOPES"
+            echo "COMMERCE_API_BASE_URL=$COMMERCE_API_BASE_URL"
+            echo "COMMERCE_STORE_CODE=$COMMERCE_STORE_CODE"
+            echo "AIO_COMMERCE_AUTH_IMS_CLIENT_ID=$IMS_OAUTH_S2S_CLIENT_ID"
+            echo "AIO_COMMERCE_AUTH_IMS_CLIENT_SECRETS=[\"$IMS_OAUTH_S2S_CLIENT_SECRET\"]"
+            echo "AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_ID=$IMS_TECHNICAL_ACCOUNT_ID"
+            echo "AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_EMAIL=$IMS_TECHNICAL_ACCOUNT_EMAIL"
+            echo "AIO_COMMERCE_AUTH_IMS_ORG_ID=$IMS_OAUTH_S2S_ORG_ID"
+            echo "AIO_COMMERCE_AUTH_IMS_SCOPES=$IMS_OAUTH_S2S_SCOPES"
+          } >> .env
+
+      - name: Build
+        uses: adobe/aio-apps-action@4.1.0
+        env:
+          AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE }}
+        with:
+          os: ubuntu-latest
+          command: build
 
       - name: Deploy
-        run: aio app deploy
+        uses: adobe/aio-apps-action@4.1.0
+        env:
+          AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE }}
+          AIO_RUNTIME_AUTH: ${{ secrets.AIO_RUNTIME_AUTH }}
+          AIO_PROJECT_ID: ${{ secrets.AIO_PROJECT_ID }}
+          AIO_PROJECT_NAME: ${{ secrets.AIO_PROJECT_NAME }}
+          AIO_PROJECT_ORG_ID: ${{ secrets.AIO_PROJECT_ORG_ID }}
+          AIO_PROJECT_ORG_IMS__ORG__ID: ${{ secrets.IMS_OAUTH_S2S_ORG_ID }}
+          AIO_PROJECT_WORKSPACE_ID: ${{ secrets.AIO_PROJECT_WORKSPACE_ID }}
+          AIO_PROJECT_WORKSPACE_NAME: ${{ secrets.AIO_PROJECT_WORKSPACE_NAME }}
+          AIO_PROJECT_WORKSPACE_DETAILS_SERVICES: ${{ secrets.AIO_PROJECT_WORKSPACE_DETAILS_SERVICES }}
+        with:
+          os: ubuntu-latest
+          command: deploy
 
       - name: Verify deployment
+        env:
+          AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE }}
+          AIO_RUNTIME_AUTH: ${{ secrets.AIO_RUNTIME_AUTH }}
         run: aio runtime action list

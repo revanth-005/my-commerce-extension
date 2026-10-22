@@ -1,5 +1,8 @@
 const { Core } = require('@adobe/aio-sdk');
+const { successResponse, errorResponse } = require('../../utils');
+const { logStructured } = require('../../logging');
 
+const ACTION = 'product-enrichment';
 const IMS_TOKEN_URL = 'https://ims-na1.adobelogin.com/ims/token/v3';
 const DEFAULT_SCOPES =
     'openid,AdobeID,email,profile,additional_info.roles,additional_info.projectedProductContext,commerce.accs';
@@ -8,6 +11,7 @@ const DEFAULT_SCOPES =
  * Adobe I/O often stores IMS_OAUTH_S2S_SCOPES in .env as a JSON array string. IMS expects a
  * space-delimited scope parameter (RFC 6749). Also normalizes comma-separated lists.
  */
+
 function normalizeScopeTokens (scopeStr) {
     return String(scopeStr)
         .split(/[,\s]+/)
@@ -66,20 +70,26 @@ async function getImsAccessToken (params) {
 }
 
 async function main (params) {
-    const logger = Core.Logger('product-enrichment', {
+    const startTime = Date.now();
+    const correlationId =
+        params['x-correlation-id'] || require('crypto').randomUUID();
+    const logger = Core.Logger(ACTION, {
         level: params.LOG_LEVEL || 'info',
+    });
+
+    logStructured(logger, 'info', ACTION, 'Action invoked', {
+        correlationId,
+        sku: params.sku,
     });
 
     try {
         const { sku } = params;
         if (!sku) {
-            return {
-                statusCode: 400,
-                body: { error: 'Missing required parameter: sku' },
-            };
+            logStructured(logger, 'warn', ACTION, 'Missing required parameter: sku', { correlationId });
+            return errorResponse(400, 'Missing required parameter: sku', correlationId);
         }
 
-        logger.info(`Fetching product data for SKU: ${sku}`);
+        logStructured(logger, 'info', ACTION, 'Fetching product data', { correlationId, sku });
 
         const baseUrl = params.COMMERCE_API_BASE_URL.replace(/\/$/, '');
         const accessToken = await getImsAccessToken(params);
@@ -96,11 +106,17 @@ async function main (params) {
         });
 
         if (!response.ok) {
-            logger.error(`Commerce API returned ${response.status}`);
-            return {
-                statusCode: response.status,
-                body: { error: `Commerce API error: ${response.statusText}` },
-            };
+            logStructured(logger, 'error', ACTION, 'Commerce API request failed', {
+                correlationId,
+                sku,
+                status: response.status,
+                durationMs: Date.now() - startTime,
+            });
+            return errorResponse(
+                response.status,
+                `Commerce API error: ${response.statusText}`,
+                correlationId
+            );
         }
 
         const product = await response.json();
@@ -114,18 +130,21 @@ async function main (params) {
             enrichedAt: new Date().toISOString(),
         };
 
-        logger.info(`Successfully enriched product: ${sku}`);
+        logStructured(logger, 'info', ACTION, 'Action completed', {
+            correlationId,
+            sku,
+            durationMs: Date.now() - startTime,
+        });
 
-        return {
-            statusCode: 200,
-            body: enrichedProduct,
-        };
+        return successResponse(enrichedProduct, correlationId);
     } catch (error) {
-        logger.error('Action failed:', error.message);
-        return {
-            statusCode: 500,
-            body: { error: 'Internal server error' },
-        };
+        logStructured(logger, 'error', ACTION, 'Action failed', {
+            correlationId,
+            sku: params.sku,
+            error: error.message,
+            durationMs: Date.now() - startTime,
+        });
+        return errorResponse(500, 'Internal server error', correlationId);
     }
 }
 exports.main = main;

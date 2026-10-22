@@ -3,10 +3,10 @@ const { defineConfig } = require("@adobe/aio-commerce-lib-app/config");
 module.exports = defineConfig({
   adminUi: {
     menu: {
-      description: "Displays enriched order data in Adobe Commerce Admin.",
+      description: "Lets merchants configure product badge rules and thresholds.",
       id: "order_enrichment_admin",
-      label: "Order Enrichment",
-      pageTitle: "Enriched Orders Dashboard",
+      label: "Badge Settings",
+      pageTitle: "Product Badge Settings",
     },
   },
   metadata: {

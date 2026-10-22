@@ -1,6 +1,9 @@
 const { Core } = require('@adobe/aio-sdk');
 const stateLib = require('@adobe/aio-lib-state');
+const { successResponse, errorResponse } = require('../../utils');
+const { logStructured } = require('../../logging');
 
+const ACTION = 'order-event-consumer';
 const IMS_TOKEN_URL = 'https://ims-na1.adobelogin.com/ims/token/v3';
 const DEFAULT_SCOPES =
   'openid,AdobeID,email,profile,additional_info.roles,additional_info.projectedProductContext,commerce.accs';
@@ -63,40 +66,60 @@ async function getImsAccessToken (params) {
 }
 
 async function main (params) {
-  const logger = Core.Logger('order-event-consumer', {
+  const startTime = Date.now();
+  const correlationId =
+      params['x-correlation-id'] || require('crypto').randomUUID();
+
+  const logger = Core.Logger(ACTION, {
     level: params.LOG_LEVEL || 'info',
   });
 
+  const eventId = params.event_id;
+  let orderId;
+
   try {
-    const eventId = params.event_id;
     const eventData = params.data?.value || params.event?.data || {};
     const eventType = params.type || params.event_type || 'unknown';
 
-    logger.info(`Event received: ${eventType}, ID: ${eventId}`);
+    logStructured(logger, 'info', ACTION, 'Action invoked', {
+      correlationId,
+      eventId,
+      eventType,
+    });
 
     const state = await stateLib.init();
     const existing = await state.get(`event-${eventId}`);
     if (existing && existing.value) {
-      logger.info(`Event ${eventId} already processed, skipping`);
-      return {
-        statusCode: 200,
-        body: { message: 'Event already processed', eventId },
-      };
+      logStructured(logger, 'info', ACTION, 'Event already processed, skipping', {
+        correlationId,
+        eventId,
+      });
+      return successResponse(
+          { message: 'Event already processed', eventId },
+          correlationId
+      );
     }
 
-    const orderId = eventData.entity_id
+    orderId = eventData.entity_id
       || eventData.increment_id
       || eventData.id;
 
     if (!orderId) {
-      logger.warn('No order ID found in event payload');
-      return {
-        statusCode: 200,
-        body: { message: 'No order ID in payload, skipping', eventId },
-      };
+      logStructured(logger, 'warn', ACTION, 'No order ID found in event payload', {
+        correlationId,
+        eventId,
+      });
+      return successResponse(
+          { message: 'No order ID in payload, skipping', eventId },
+          correlationId
+      );
     }
 
-    logger.info(`Processing order: ${orderId}`);
+    logStructured(logger, 'info', ACTION, 'Processing order', {
+      correlationId,
+      eventId,
+      orderId,
+    });
 
     const baseUrl = params.COMMERCE_API_BASE_URL.replace(/\/$/, '');
     const accessToken = await getImsAccessToken(params);
@@ -116,11 +139,18 @@ async function main (params) {
     );
 
     if (!orderResponse.ok) {
-      logger.error(`Commerce API returned ${orderResponse.status} for order ${orderId}`);
-      return {
-        statusCode: 500,
-        body: { error: `Failed to fetch order ${orderId}` },
-      };
+      logStructured(logger, 'error', ACTION, 'Commerce API request failed', {
+        correlationId,
+        eventId,
+        orderId,
+        status: orderResponse.status,
+        durationMs: Date.now() - startTime,
+      });
+      return errorResponse(
+          500,
+          `Failed to fetch order ${orderId}`,
+          correlationId
+      );
     }
 
     const order = await orderResponse.json();
@@ -145,7 +175,13 @@ async function main (params) {
       },
     };
 
-    logger.info('Enriched order:', JSON.stringify(enrichedOrder));
+    logStructured(logger, 'info', ACTION, 'Order enriched', {
+      correlationId,
+      eventId,
+      orderId,
+      orderTier: enrichedOrder.enrichment.orderTier,
+      itemCount: enrichedOrder.itemCount,
+    });
 
     await state.put(`order-${orderId}`, JSON.stringify(enrichedOrder), {
       ttl: 604800,
@@ -162,7 +198,7 @@ async function main (params) {
         if (knownOrderIds.length > 100){
           knownOrderIds = knownOrderIds.slice(-100);
         }
-        await state.put('known-Order-ids', JSON.stringify(knownOrderIds), { ttl: 604800 });
+        await state.put('known-order-ids', JSON.stringify(knownOrderIds), { ttl: 604800 });
     }
 
 
@@ -170,23 +206,36 @@ async function main (params) {
       ttl: 86400,
     });
 
-    logger.info(`Successfully processed event ${eventId} for order ${orderId}`);
+    logStructured(logger, 'info', ACTION, 'Action completed', {
+      correlationId,
+      eventId,
+      orderId,
+      durationMs: Date.now() - startTime,
+    });
 
-    return {
-      statusCode: 200,
-      body: {
-        message: 'Event processed successfully',
-        eventId,
-        orderId,
-        orderTier: enrichedOrder.enrichment.orderTier,
-      },
-    };
+    return successResponse(
+        {
+          message: 'Event processed successfully',
+          eventId,
+          orderId,
+          orderTier: enrichedOrder.enrichment.orderTier,
+        },
+        correlationId
+    );
   } catch (error) {
-    logger.error('Event processing failed:', error.message, error.stack);
-    return {
-      statusCode: 500,
-      body: { error: 'Event processing failed' },
-    };
+    logStructured(logger, 'error', ACTION, 'Event processing failed', {
+      correlationId,
+      eventId,
+      orderId,
+      error: error.message,
+      stack: error.stack,
+      durationMs: Date.now() - startTime,
+    });
+    return errorResponse(
+        500,
+        'Event processing failed',
+        correlationId
+    );
   }
 }
 

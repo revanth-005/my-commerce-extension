@@ -1,0 +1,5 @@
+{
+  "event_id": "test-event-1",
+  "type": "com.adobe.commerce.observer.catalog_product_save_after",
+  "data": { "value": { "sku": "ACM-3030" } }
+}

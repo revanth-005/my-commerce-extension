@@ -1,10 +1,10 @@
-import { Welcome } from "#web/components/welcome.jsx";
+import { BadgeSettings } from "#web/components/badge-settings.jsx";
 
 /** Entrypoint for the main page of the app. */
 export function MainPage() {
   return (
     <main>
-      <Welcome />
+      <BadgeSettings />
     </main>
   );
 }
